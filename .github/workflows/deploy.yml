@@ -1,28 +1,33 @@
-﻿name: Deploy to Apps Script
+﻿name: Deploy para o Google Apps Script
 
 on:
   push:
     branches:
-      - main
+      - main # ou master, dependendo da sua branch principal
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout do Código
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Install clasp
-        run: npm install -g @google/clasp
+      - name: Instalar Clasp
+        run: sudo npm install -g @google/clasp
 
-      - name: Create clasprc.json
+      - name: Criar arquivos de configuração do Clasp
         run: |
-          echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+          echo "$CLASPRC_JSON" > ~/.clasprc.json
+          echo "$CLASP_JSON" > .clasp.json
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
 
-      - name: Deploy to Google Apps Script
+      - name: Enviar código para o Apps Script (clasp push)
         run: clasp push --force
