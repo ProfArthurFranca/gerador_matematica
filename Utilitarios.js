@@ -30,6 +30,24 @@ function embaralhar(arr) {
 }
 
 /**
+ * Escapa caracteres especiais do LaTeX.
+ * @param {string} texto Texto a escapar.
+ * @returns {string}
+ */
+function escapeLatex(texto) {
+  return String(texto || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/&/g, '\\&')
+    .replace(/%/g, '\\%')
+    .replace(/\$/g, '\\$')
+    .replace(/#/g, '\\#')
+    .replace(/_/g, '\\_')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/~/g, '\\textasciitilde{}');
+}
+
+/**
  * Limpeza matemática e visual do texto em LaTeX.
  * @param {string} texto Texto a limpar.
  * @returns {string}
