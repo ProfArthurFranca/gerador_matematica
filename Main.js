@@ -1,126 +1,63 @@
-﻿/**
- * Orquestração principal do gerador.
- */
+﻿
+const ABA_CONTROLE = 'Controle';
+const ABA_GERADOR = 'Gerador';
 
-var PLANILHA_PRINCIPAL = 'Gerador_Matemática';
-var ABA_CONTROLE = 'Controle';
-var ABA_GERADOR = 'Gerador';
-var DESTINO_RAIZ = true;
-var PASTA_DESTINO_ID = '';
 
-/**
- * Função principal de entrada do gerador.
- * @returns {Array<Object>} Objeto com URLs dos arquivos gerados.
- */
-function gerarTex() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var configControle = obterDadosControle(ss);
-  var listaRequisitosGerador = obterRequisitosGerador(ss);
 
-  var resultados = [];
+function main() {
+  let { controle, gerador } = ler_gerador(ABA_CONTROLE, ABA_GERADOR);
 
-  for (var i = 0; i < configControle.length; i += 1) {
-    var item = configControle[i];
-    var tipo = String(item.tipo || '').trim();
-    var quantidade = Math.max(1, Number(item.quantidade || 1));
-    var nomeBase = String(item.nomeArquivo || '').trim();
+  let documentLatex = criar_preambulo();
+  let gabaritoLatex = criar_preambulo();
 
-    if (!nomeBase) {
-      continue;
+
+  //Loop na quantidade de dcoumentos que serão gerados
+  for (let i = 0; i < controle.quantidade_documento; i++) {
+    let sequencial = i + 1;
+    let questoes = [];
+
+    //loop nas quantidades de questões e assuntos por documento
+    for (let j = 0; j < gerador.length; j++) { 
+      let linha_gerador = {
+        idBanco: gerador[j][1],
+        quantidade_questao: gerador[j][2],
+        nivel: gerador[j][3],
+        tipo_questao: gerador[j][4]
+      }
+
+      questoes = questoes.concat(
+        ler_banco(linha_gerador.idBanco, linha_gerador.nivel, linha_gerador.quantidade_questao, linha_gerador.tipo_questao)
+      );
     }
 
-    var versoesAluno = [];
-    var versoesGabarito = [];
+    //sortear e aplicar as variáveis para cada questão
+    let questoes_aplicadas = questoes.map((questao) => {
+      let valores = sortear_valores(questao.variaveis);
+      let enunciado = aplicar_valores(questao.enunciado, valores);
+      let imagem = aplicar_valores(questao.imagem, valores);
+      let resposta = aplicar_valores(questao.resposta, valores);
+      resposta = resolver(resposta);
+      let alternativas = questao.tipo == 'aberta' ? [] : questao.distratores.map((d) => resolver(aplicar_valores(d, valores)));
+      alternativas = [...alternativas, resposta];
+      alternativas = embaralhar_lista(alternativas);
+    });
 
-    for (var v = 0; v < quantidade; v += 1) {
-      var bloco = gerarVersao(listaRequisitosGerador, v + 1);
-      versoesAluno.push(bloco.aluno);
-      versoesGabarito.push(bloco.gabarito);
+    //gerar os documentos em Latex
+    let { documentLatex: docLatex, gabaritoLatex: gabLatex } = gerar_documento(questoes, controle.titulo, sequencial);
+    documentLatex += docLatex;
+    gabaritoLatex += gabLatex;
+
+    // Só adiciona a nova página se NÃO for a última prova/lista
+    if (i < controle.quantidade_documento - 1) {
+      documentLatex += '\\newpage\n';
+      gabaritoLatex += '\\newpage\n';
     }
-
-    var texAluno = [
-      criarPreambuloLatex(),
-      criarCabecalho(tipo, nomeBase, v + 1),
-      versoesAluno.join('\n\n\\newpage\n\n'),
-      '\\end{document}'
-    ].join('\n\n');
-
-    var texGabarito = [
-      criarPreambuloLatex(),
-      criarCabecalhoGabarito(nomeBase, v + 1),
-      versoesGabarito.join('\n\n\\newpage\n\n'),
-      '\\end{document}'
-    ].join('\n\n');
-
-    var arquivoAluno = salvarArquivoTex(nomeBase + '.tex', texAluno);
-    var arquivoGabarito = salvarArquivoTex(nomeBase + '_Gabarito.tex', texGabarito);
-
-    resultados.push({
-      tipo: tipo,
-      nomeArquivo: nomeBase,
-      alunoUrl: arquivoAluno && arquivoAluno.getUrl ? arquivoAluno.getUrl() : '',
-      gabaritoUrl: arquivoGabarito && arquivoGabarito.getUrl ? arquivoGabarito.getUrl() : ''
-    });
   }
 
-  return resultados;
-}
+  documentLatex += '\\end{document}\n';
+  gabaritoLatex += '\\end{document}\n';
 
-/**
- * Lê as configurações da aba Controle.
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss Planilha ativa.
- * @returns {Array<Object>}
- */
-function obterDadosControle(ss) {
-  var controleSheet = ss.getSheetByName(ABA_CONTROLE);
-  if (!controleSheet) {
-    throw new Error('Aba "Controle" não encontrada.');
-  }
+  criar_tex(documentLatex, controle.titulo);
+  criar_tex(gabaritoLatex, controle.titulo + ' - Gabarito');
 
-  var controleValues = controleSheet.getDataRange().getValues();
-  return controleValues.slice(1)
-    .map(function (linha) {
-      return {
-        tipo: linha[0] || '',
-        quantidade: Number(linha[1] || 1),
-        nomeArquivo: linha[2] || ''
-      };
-    })
-    .filter(function (row) {
-      return row.tipo && row.nomeArquivo;
-    });
-}
-
-/**
- * Lê os requisitos da aba Gerador.
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss Planilha ativa.
- * @returns {Array<Object>}
- */
-function obterRequisitosGerador(ss) {
-  var geradorSheet = ss.getSheetByName(ABA_GERADOR);
-  if (!geradorSheet) {
-    throw new Error('Aba "Gerador" não encontrada.');
-  }
-
-  var geradorValues = geradorSheet.getDataRange().getValues();
-  return geradorValues.slice(1)
-    .map(function (linha) {
-      return {
-        conteudo: linha[0] || '',
-        idBanco: linha[1] || '',
-        quantidade: Number(linha[2] || 0),
-        nivel: linha[3] || '',
-        tipo: linha[4] || ''
-      };
-    })
-    .filter(function (row) {
-      return row.idBanco && row.quantidade > 0;
-    });
-}
-
-/**
- * Função de teste para depuração.
- */
-function testeGerarTex() {
-  Logger.log(JSON.stringify(gerarTex()));
 }
